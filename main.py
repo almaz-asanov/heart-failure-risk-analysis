@@ -1,0 +1,95 @@
+import pandas as pd 
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import confusion_matrix, accuracy_score
+from pathlib import Path
+
+
+#heart_failure_data = pd.read_csv('heart_failure_clinical_records_dataset.csv')
+data_path = (Path(__file__).resolve().parent / 'heart_failure_clinical_records_dataset.csv')
+def load_data(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        raise FileNotFoundError(f'Dataset not found: {path}')
+    data = pd.read_csv(path)
+    required_columns = {
+        "age",
+        "ejection_fraction",
+        "serum_creatinine",
+        "DEATH_EVENT",
+    }
+    missing_columns = required_columns - set(data.columns)
+    if missing_columns:
+        raise ValueError(
+            f"Missing required columns: {sorted(missing_columns)}"
+        )
+    if data.empty:
+        raise ValueError("The dataset is empty.")
+    if data["DEATH_EVENT"].isna().any():
+        raise ValueError("The target column contains missing values.")
+    if not data["DEATH_EVENT"].isin([0, 1]).all():
+        raise ValueError("The target column contains not 0 or 1.")
+    return data
+
+
+heart_failure_data = load_data(data_path)
+print("Dataset shape:", heart_failure_data.shape)
+print("Missing values:", heart_failure_data.isna().sum().sum())
+print("Duplicate rows:", heart_failure_data.duplicated().sum())
+print("Target distribution:",heart_failure_data["DEATH_EVENT"].value_counts())
+print(heart_failure_data.head())
+
+age_bins = [40, 50, 60, 70, 80, 90, 100]
+age_labels = ["40–49", "50–59", "60–69", "70–79", "80–89", "90–99"]
+age_data = heart_failure_data.assign(age_group=pd.cut(heart_failure_data["age"],bins=age_bins,labels=age_labels,right=False))
+
+age_summary = (
+    age_data.groupby("age_group", observed=False)
+    .agg(
+        participant_count=("DEATH_EVENT", "size"),
+        death_count=("DEATH_EVENT", "sum"),
+        death_rate=("DEATH_EVENT", "mean"),
+    )
+    .reset_index()
+)
+
+print("\nDeath-event summary by age group:")
+print(age_summary)
+
+sns.barplot(
+    data=age_summary,
+    x="age_group",
+    y="death_rate",
+)
+
+plt.xlabel("Age group")
+plt.ylabel("Proportion with DEATH_EVENT = 1")
+plt.title("Observed death-event proportion by age group")
+plt.ylim(0, 1)
+plt.tight_layout()
+plt.show()
+
+sns.relplot(x="serum_creatinine", y="ejection_fraction", hue="DEATH_EVENT", kind="scatter", style="smoking", data=heart_failure_data, aspect=16/9);
+
+agg_data2 = heart_failure_data.groupby(['age', 'ejection_fraction'], as_index=False).DEATH_EVENT.sum()
+agg_data2.columns = ['Age', 'ejection_fraction', 'Deaths']
+agg_data2_p = agg_data2.pivot(index='Age', columns='ejection_fraction', values='Deaths')
+agg_data2_p.fillna(0, inplace=True)
+agg_data2_p.head(20)
+plt.subplots(figsize=(20,15))
+sns.heatmap(agg_data2_p, annot=True)
+plt.show()
+
+X = heart_failure_data.drop('DEATH_EVENT', axis = 1)
+y = heart_failure_data['DEATH_EVENT']
+X_train,X_test,y_train,y_test= train_test_split(X, y, test_size = 0.1)
+sc = StandardScaler()
+X_train = sc.fit_transform(X_train)
+X_test = sc.transform(X_test)
+classifier = KNeighborsClassifier(n_neighbors =15)
+classifier.fit(X_train, y_train)
+y_pred = classifier.predict(X_test)
+print(accuracy_score(y_test, y_pred) * 100)
