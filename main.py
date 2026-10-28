@@ -10,6 +10,7 @@ from sklearn.dummy import DummyClassifier
 from sklearn.metrics import classification_report
 from sklearn.pipeline import Pipeline
 from pathlib import Path
+from sklearn.model_selection import StratifiedKFold, cross_validate
 
 
 #heart_failure_data = pd.read_csv('heart_failure_clinical_records_dataset.csv')
@@ -89,6 +90,52 @@ X = heart_failure_data.drop('DEATH_EVENT', axis = 1)
 y = heart_failure_data['DEATH_EVENT']
 X_train,X_test,y_train,y_test = train_test_split(X, y, test_size = 0.2, stratify = y)
 
+cv = StratifiedKFold(
+    n_splits=5,
+    shuffle=True,
+    random_state=42,
+)
+
+neighbors_values = [3, 5, 7, 9, 11, 15, 21, 25] # best number of neighbours is 5
+cv_results = []
+
+for k in neighbors_values:
+    model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("classifier", KNeighborsClassifier(n_neighbors=k)),
+    ])
+    scores = cross_validate(
+        model,
+        X_train,
+        y_train,
+        cv=cv,
+        scoring={
+            "recall": "recall",
+            "f1": "f1",
+            "balanced_accuracy": "balanced_accuracy",
+        },
+    )
+
+    cv_results.append({
+        "n_neighbors": k,
+        "mean_recall": scores["test_recall"].mean(),
+        "std_recall": scores["test_recall"].std(),
+        "mean_f1": scores["test_f1"].mean(),
+        "mean_balanced_accuracy": (
+            scores["test_balanced_accuracy"].mean()
+        ),
+    })
+
+cv_results_df = pd.DataFrame(cv_results)
+
+print("\nKNN cross-validation results:")
+print(
+    cv_results_df
+    .sort_values("mean_recall", ascending=False)
+    .round(3)
+    .to_string(index=False)
+)
+
 baseline = DummyClassifier(strategy='most_frequent')
 baseline.fit(X_train, y_train)
 baseline_pred = baseline.predict(X_test)
@@ -97,6 +144,7 @@ knn_model = Pipeline([
     ("scaler", StandardScaler()),
     ("classifier", KNeighborsClassifier(n_neighbors = 15))
 ])
+
 knn_model.fit(X_train, y_train)
 y_pred = knn_model.predict(X_test)
 
