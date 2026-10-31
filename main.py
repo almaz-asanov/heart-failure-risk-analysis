@@ -11,6 +11,8 @@ from sklearn.metrics import classification_report
 from sklearn.pipeline import Pipeline
 from pathlib import Path
 from sklearn.model_selection import StratifiedKFold, cross_validate
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 
 
 #heart_failure_data = pd.read_csv('heart_failure_clinical_records_dataset.csv')
@@ -96,7 +98,77 @@ cv = StratifiedKFold(
     random_state=42,
 )
 
-neighbors_values = [3, 5, 7, 9, 11, 15, 21, 25] # best number of neighbours is 5
+models = {
+    "KNN": Pipeline([
+        ("scaler", StandardScaler()),
+        ("classifier", KNeighborsClassifier(n_neighbors=5)),
+    ]),
+    "Logistic Regression": Pipeline([
+        ("scaler", StandardScaler()),
+        ("classifier", LogisticRegression(
+            max_iter=1000,
+            class_weight="balanced",
+            random_state=42,
+        )),
+    ]),
+    "Random Forest": RandomForestClassifier(
+        n_estimators=300,
+        class_weight="balanced",
+        random_state=42,
+    ),
+}
+
+scoring = {
+    "recall": "recall",
+    "f1": "f1",
+    "balanced_accuracy": "balanced_accuracy",
+}
+
+comparison_results = []
+
+for model_name, model in models.items():
+    scores = cross_validate(
+        model,
+        X_train,
+        y_train,
+        cv=cv,
+        scoring=scoring,
+    )
+
+    comparison_results.append({
+        "model": model_name,
+        "mean_recall": scores["test_recall"].mean(),
+        "std_recall": scores["test_recall"].std(),
+        "mean_f1": scores["test_f1"].mean(),
+        "mean_balanced_accuracy": (
+            scores["test_balanced_accuracy"].mean()
+        ),
+    })
+
+comparison_df = pd.DataFrame(comparison_results)
+
+print("\nModel comparison using cross-validation:")
+print(
+    comparison_df
+    .sort_values("mean_recall", ascending=False)
+    .round(3)
+    .to_string(index=False)
+)
+
+print("\nFinal test-set evaluation:")
+for model_name, model in models.items():
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    print(f"\n{model_name}")
+    print(classification_report(
+        y_test,
+        y_pred,
+        zero_division=0,
+    ))
+    print("Confusion matrix:")
+    print(confusion_matrix(y_test, y_pred))
+
+'''neighbors_values = [3, 5, 7, 9, 11, 15, 21, 25] # best number of neighbours is 5
 cv_results = []
 
 for k in neighbors_values:
@@ -134,7 +206,7 @@ print(
     .sort_values("mean_recall", ascending=False)
     .round(3)
     .to_string(index=False)
-)
+)'''
 
 baseline = DummyClassifier(strategy='most_frequent')
 baseline.fit(X_train, y_train)
